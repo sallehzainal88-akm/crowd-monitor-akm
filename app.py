@@ -36,7 +36,9 @@ class VideoProcessor(VideoTransformerBase):
         tinggi, lebar, _ = img.shape
 
         # Jalankan fungsi jejak menggunakan AI YOLO
-        hasil_ai_list = model.track(img, persist=True, verbose=False)
+        # Memaksa YOLOv8 menggunakan penjejak ByteTrack yang ringan tanpa memerlukan pakej 'lap'
+hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False)
+
         dalam_frame_sekarang = 0
 
         if len(hasil_ai_list) > 0:

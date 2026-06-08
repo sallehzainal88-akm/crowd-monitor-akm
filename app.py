@@ -77,8 +77,11 @@ class VideoProcessor(VideoTransformerBase):
 
         return frame.from_ndarray(img, format="bgr24")
 
-# Sediakan 2 ruangan lajur (Columns) pada halaman web Streamlit
-col1, col2 = st.columns()
+# =========================================================================
+# PERBAIKAN UTAMA: Masukkan angka 2 ke dalam st.columns(2)
+# =========================================================================
+col1, col2 = st.columns(2)
+# =========================================================================
 
 with col1:
     st.subheader("Suapan Kamera Langsung")
@@ -123,9 +126,6 @@ while ctx.state.playing:
     except queue.Empty:
         continue
 
-# =========================================================================
-# FUNGSI UTAMA: PENJANAAN FAIL CSV UNTUK DIMUAT TURUN SELEPAS BUTANG "STOP" DIKLIK
-# =========================================================================
 if not ctx.state.playing and st.session_state.waktu_mula_sesi is None:
     petak_butang_download.info("Sila klik butang 'Start' pada kamera untuk memulakan sesi rekod.")
 
@@ -166,3 +166,4 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
     
     # Set semula waktu mula sesi kepada None supaya sedia untuk sesi baharu jika kamera di-start semula
     st.session_state.waktu_mula_sesi = None
+

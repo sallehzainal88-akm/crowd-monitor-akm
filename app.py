@@ -35,10 +35,8 @@ class VideoProcessor(VideoTransformerBase):
         img = frame.to_ndarray(format="bgr24")
         tinggi, lebar, _ = img.shape
 
-        # Jalankan fungsi jejak menggunakan AI YOLO
-        # Memaksa YOLOv8 menggunakan penjejak ByteTrack yang ringan tanpa memerlukan pakej 'lap'
-hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False)
-
+        # Memaksa YOLOv8 menggunakan penjejak ByteTrack kalis ralat 'lap'
+        hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False)
         dalam_frame_sekarang = 0
 
         if len(hasil_ai_list) > 0:
@@ -79,11 +77,8 @@ hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose
 
         return frame.from_ndarray(img, format="bgr24")
 
-# =========================================================================
-# PERBAIKAN UTAMA: Masukkan angka 2 ke dalam st.columns(2)
-# =========================================================================
+# Set susunan halaman kepada 2 lajur seimbang
 col1, col2 = st.columns(2)
-# =========================================================================
 
 with col1:
     st.subheader("Suapan Kamera Langsung")
@@ -168,4 +163,5 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
     
     # Set semula waktu mula sesi kepada None supaya sedia untuk sesi baharu jika kamera di-start semula
     st.session_state.waktu_mula_sesi = None
+
 

@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 import cv2
 from ultralytics import YOLO
 import queue
@@ -27,7 +27,8 @@ if "rekod_laporan_list" not in st.session_state:
 if "waktu_mula_sesi" not in st.session_state:
     st.session_state.waktu_mula_sesi = None
 
-class VideoProcessor(VideoTransformerBase):
+# KEMASKINI 1: Tukar VideoTransformerBase kepada VideoProcessorBase yang moden
+class CrowdVideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.senarai_id_pelawat = set()
 
@@ -39,6 +40,7 @@ class VideoProcessor(VideoTransformerBase):
         hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False)
         dalam_frame_sekarang = 0
 
+        # KEMASKINI 2: Membaca indeks [0] dengan tepat untuk mengekstrak objek Results
         if len(hasil_ai_list) > 0:
             hasil_ai = hasil_ai_list[0]
 
@@ -82,21 +84,19 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Suapan Kamera Langsung")
-    # Jalankan tetingkap penstriman kamera web
+    # KEMASKINI 3: Menggunakan parameter 'video_processor_factory' & 'async_processing' terkini
     ctx = webrtc_streamer(
         key="crowd-monitor",
         mode=WebRtcMode.SENDRECV,
-        video_transformer_factory=VideoProcessor,
-        async_transform=True,
+        video_processor_factory=CrowdVideoProcessor,
+        async_processing=True,
     )
 
 with col2:
     st.subheader("Statistik Pengunjung Semasa")
-    # Tempat letak statistik teks dinamik yang kalis beku (st.empty)
     petak_data_semasa = st.empty()
     petak_data_jumlah = st.empty()
     
-    # Nilai lalai awal sebelum kamera dibuka
     petak_data_semasa.metric(label="Dalam Frame Sekarang", value="0 orang")
     petak_data_jumlah.metric(label="Jumlah Pelawat Unik Hari Ini", value="0 orang")
     
@@ -111,14 +111,9 @@ if ctx.state.playing and st.session_state.waktu_mula_sesi is None:
 # Gelung pengawasan utama untuk menangkap data dari utas video dan memaparkannya di web
 while ctx.state.playing:
     try:
-        # Ambil data terbaharu dari barisan Queue tanpa menyekat kelajuan web
         dalam_frame, jumlah_pelawat = st.session_state.data_queue.get(timeout=0.1)
-        
-        # Kemaskini kad statistik di web Streamlit secara langsung (Real-Time)
         petak_data_semasa.metric(label="Dalam Frame Sekarang", value=f"{dalam_frame} orang")
         petak_data_jumlah.metric(label="Jumlah Pelawat Unik Hari Ini", value=f"{jumlah_pelawat} orang")
-        
-        # Kemaskini pembolehubah sesi untuk disimpan nanti
         st.session_state.jumlah_akhir_pengunjung = jumlah_pelawat
     except queue.Empty:
         continue
@@ -132,7 +127,6 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
     tarikh_hari_ini = datetime.now().strftime("%Y-%m-%d")
     jumlah_total = st.session_state.get("jumlah_akhir_pengunjung", 0)
     
-    # Bina data baris baharu
     data_sesi_ini = {
         "Tarikh Rekod": tarikh_hari_ini,
         "Waktu Mula Rekod": st.session_state.waktu_mula_sesi,
@@ -140,17 +134,12 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
         "Jumlah Pengunjung": jumlah_total
     }
     
-    # Masukkan ke dalam list rekod laporan jika belum ada
     if data_sesi_ini not in st.session_state.rekod_laporan_list:
         st.session_state.rekod_laporan_list.append(data_sesi_ini)
     
-    # Tukarkan senarai data laporan menjadi struktur format DataFrame (Excel/CSV Table)
     df_laporan = pd.DataFrame(st.session_state.rekod_laporan_list)
-    
-    # Tukarkan jadual DataFrame kepada format data teks CSV mampat
     csv_data = df_laporan.to_csv(index=False).encode('utf-8')
     
-    # Paparkan Butang Muat Turun CSV secara rasmi di skrin web
     with col2:
         petak_butang_download.download_button(
             label="📥 Muat Turun Laporan CSV",
@@ -161,7 +150,7 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
         )
         st.success(f"Sesi tamat pada pukul {waktu_tamat}. Fail laporan sedia untuk dimuat turun!")
     
-    # Set semula waktu mula sesi kepada None supaya sedia untuk sesi baharu jika kamera di-start semula
     st.session_state.waktu_mula_sesi = None
+
 
 

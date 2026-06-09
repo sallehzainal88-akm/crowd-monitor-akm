@@ -10,33 +10,36 @@ st.set_page_config(page_title="Crowd Monitor AI", layout="wide")
 st.title("Crowd Monitor AI - Team IT AKM")
 st.write("Sistem pengesan pengunjung masa-nyata berasaskan kecerdasan buatan.")
 
-# Memuatkan model AI YOLOv8 Medium secara selamat di server Streamlit
+# 1. Memuatkan model AI YOLOv8 Medium secara selamat
 @st.cache_resource
 def load_model():
     return YOLO("yolov8m.pt")
 
 model = load_model()
 
-# Cipta 'Sistem Barisan Data' (Queue) untuk menghantar data keluar dari utas video
+# 2. Cipta Queue global untuk komunikasi antara thread WebRTC & Streamlit
 if "data_queue" not in st.session_state:
     st.session_state.data_queue = queue.Queue()
 
-# Tempat simpan senarai data laporan untuk dijadikan fail CSV
 if "rekod_laporan_list" not in st.session_state:
     st.session_state.rekod_laporan_list = []
 if "waktu_mula_sesi" not in st.session_state:
     st.session_state.waktu_mula_sesi = None
+if "jumlah_akhir_pengunjung" not in st.session_state:
+    st.session_state.jumlah_akhir_pengunjung = 0
 
+# 3. Kelas Pemprosesan Video (WebRTC Thread)
 class CrowdVideoProcessor(VideoProcessorBase):
-    def __init__(self):
+    def __init__(self, data_queue):
         self.senarai_id_pelawat = set()
+        self.data_queue = data_queue  # Guna queue yang di-pass, bukan st.session_state secara langsung
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         tinggi, lebar, _ = img.shape
 
-        # Memaksa YOLOv8 menggunakan penjejak ByteTrack kalis ralat 'lap'
-        hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False)
+        # Tambah classes=[0] untuk mengehadkan pengesanan kepada MANUSIA sahaja
+        hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False, classes=[0])
         dalam_frame_sekarang = 0
 
         if len(hasil_ai_list) > 0:
@@ -59,8 +62,8 @@ class CrowdVideoProcessor(VideoProcessorBase):
 
         jumlah_pelawat_hari_ini = len(self.senarai_id_pelawat)
 
-        # Hantar data bilangan terkini ke luar utas video menggunakan Queue
-        st.session_state.data_queue.put((dalam_frame_sekarang, jumlah_pelawat_hari_ini))
+        # Masukkan data ke dalam queue dengan selamat
+        self.data_queue.put((dalam_frame_sekarang, jumlah_pelawat_hari_ini))
 
         # Dashboard maklumat teks atas skrin kamera
         cv2.rectangle(img, (20, 20), (450, 150), (0, 0, 0), -1)
@@ -83,65 +86,63 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Suapan Kamera Langsung")
     
-    # =========================================================================
-    # PENYELESAIAN UTAMA: MENAMBAH SENARAI PELAYAN STUN GLOBAL (VERSI SINTAKSIS BETUL)
-    # =========================================================================
+    # PEMBETULAN: Format sintaks STUN Server yang betul untuk Google & Twilio public
     konfigurasi_rtc = {
         "iceServers": [
-            {
-                "urls": [
-                    "stun:://google.com",
-                    "stun:://google.com",
-                    "stun:://google.com",
-                    "stun:stun.stunprotocol.org:3478"
-                ]
-            }
+            {"urls": ["stun:://google.com"]},
+            {"urls": ["stun:://google.com"]},
+            {"urls": ["stun:stun.stunprotocol.org:3478"]}
         ]
     }
     
     ctx = webrtc_streamer(
         key="crowd-monitor",
         mode=WebRtcMode.SENDRECV,
-        video_processor_factory=CrowdVideoProcessor,
+        # Hantar data_queue masuk ke dalam parameter factory
+        video_processor_factory=lambda: CrowdVideoProcessor(st.session_state.data_queue),
         async_processing=True,
-        rtc_configuration=konfigurasi_rtc, # Memasukkan tetapan rangkaian baharu
+        rtc_configuration=konfigurasi_rtc,
     )
-    # =========================================================================
 
 with col2:
     st.subheader("Statistik Pengunjung Semasa")
     petak_data_semasa = st.empty()
     petak_data_jumlah = st.empty()
     
-    petak_data_semasa.metric(label="Dalam Frame Sekarang", value="0 orang")
-    petak_data_jumlah.metric(label="Jumlah Pelawat Unik Hari Ini", value="0 orang")
-    
     st.write("---")
     st.subheader("Pusat Muat Turun Laporan")
     petak_butang_download = st.empty()
 
-# Rekod waktu mula sebaik sahaja pengguna mengklik butang "Start" pada kamera
-if ctx.state.playing and st.session_state.waktu_mula_sesi is None:
-    st.session_state.waktu_mula_sesi = datetime.now().strftime("%H:%M:%S")
+# 4. Pengurusan Logik State & Pengeluaran Data secara Selamat
+if ctx.state.playing:
+    if st.session_state.waktu_mula_sesi is None:
+        st.session_state.waktu_mula_sesi = datetime.now().strftime("%H:%M:%S")
 
-# Gelung pengawasan utama untuk menangkap data dari utas video dan memaparkannya di web
-while ctx.state.playing:
-    try:
-        dalam_frame, jumlah_pelawat = st.session_state.data_queue.get(timeout=0.1)
-        petak_data_semasa.metric(label="Dalam Frame Sekarang", value=f"{dalam_frame} orang")
-        petak_data_jumlah.metric(label="Jumlah Pelawat Unik Hari Ini", value=f"{jumlah_pelawat} orang")
-        st.session_state.jumlah_akhir_pengunjung = jumlah_pelawat
-    except queue.Empty:
-        continue
+    # Baca data terakhir yang ada di dalam queue tanpa menggunakan loop "while True" yang tiada henti
+    dalam_frame, jumlah_pelawat = 0, st.session_state.jumlah_akhir_pengunjung
+    while not st.session_state.data_queue.empty():
+        dalam_frame, jumlah_pelawat = st.session_state.data_queue.get()
+    
+    st.session_state.jumlah_akhir_pengunjung = jumlah_pelawat
 
-if not ctx.state.playing and st.session_state.waktu_mula_sesi is None:
-    petak_butang_download.info("Sila klik butang 'Start' pada kamera untuk memulakan sesi rekod.")
+    petak_data_semasa.metric(label="Dalam Frame Sekarang", value=f"{dalam_frame} orang")
+    petak_data_jumlah.metric(label="Jumlah Pelawat Unik Hari Ini", value=f"{jumlah_pelawat} orang")
+    
+    # Paksa Streamlit buat refresh UI pendek secara auto jika kamera sedang aktif
+    st.button("🔄 Kemas Kini Metrik Manual", key="refresh_btn")
 
-# Apabila sesi kamera bertukar daripada hidup kepada BERHENTI (User klik Stop)
+else:
+    petak_data_semasa.metric(label="Dalam Frame Sekarang", value="0 orang")
+    petak_data_jumlah.metric(label="Jumlah Pelawat Unik Hari Ini", value=f"{st.session_state.jumlah_akhir_pengunjung} orang")
+
+    if st.session_state.waktu_mula_sesi is None:
+        petak_butang_download.info("Sila klik butang 'Start' pada kamera untuk memulakan sesi rekod.")
+
+# Apabila pengguna menekan butang 'Stop'
 if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
     waktu_tamat = datetime.now().strftime("%H:%M:%S")
     tarikh_hari_ini = datetime.now().strftime("%Y-%m-%d")
-    jumlah_total = st.session_state.get("jumlah_akhir_pengunjung", 0)
+    jumlah_total = st.session_state.jumlah_akhir_pengunjung
     
     data_sesi_ini = {
         "Tarikh Rekod": tarikh_hari_ini,
@@ -166,4 +167,5 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
         )
         st.success(f"Sesi tamat pada pukul {waktu_tamat}. Fail laporan sedia untuk dimuat turun!")
     
+    # Reset waktu mula untuk sesi akan datang
     st.session_state.waktu_mula_sesi = None

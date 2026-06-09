@@ -27,7 +27,6 @@ if "rekod_laporan_list" not in st.session_state:
 if "waktu_mula_sesi" not in st.session_state:
     st.session_state.waktu_mula_sesi = None
 
-# KEMASKINI 1: Tukar VideoTransformerBase kepada VideoProcessorBase yang moden
 class CrowdVideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.senarai_id_pelawat = set()
@@ -40,7 +39,6 @@ class CrowdVideoProcessor(VideoProcessorBase):
         hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False)
         dalam_frame_sekarang = 0
 
-        # KEMASKINI 2: Membaca indeks [0] dengan tepat untuk mengekstrak objek Results
         if len(hasil_ai_list) > 0:
             hasil_ai = hasil_ai_list[0]
 
@@ -84,13 +82,26 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Suapan Kamera Langsung")
-    # KEMASKINI 3: Menggunakan parameter 'video_processor_factory' & 'async_processing' terkini
+    
+    # =========================================================================
+    # PENYELESAIAN UTAMA: MENAMBAH SENARAI PELAYAN STUN GLOBAL (KALIS FIREWALLPejabat)
+    # =========================================================================
+    konfigurasi_rtc = {
+        "iceServers": [
+            {"urls": ["stun:://google.com", "stun:://google.com"]},
+            {"urls": ["stun:://xten.com", "stun:stun.schlund.de"]},
+            {"urls": ["stun:stun.stunprotocol.org:3478"]}
+        ]
+    }
+    
     ctx = webrtc_streamer(
         key="crowd-monitor",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=CrowdVideoProcessor,
         async_processing=True,
+        rtc_configuration=konfigurasi_rtc, # Memasukkan tetapan rangkaian baharu
     )
+    # =========================================================================
 
 with col2:
     st.subheader("Statistik Pengunjung Semasa")
@@ -151,6 +162,3 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
         st.success(f"Sesi tamat pada pukul {waktu_tamat}. Fail laporan sedia untuk dimuat turun!")
     
     st.session_state.waktu_mula_sesi = None
-
-
-

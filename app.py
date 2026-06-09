@@ -10,7 +10,7 @@ st.set_page_config(page_title="Crowd Monitor AI", layout="wide")
 st.title("Crowd Monitor AI - Team IT AKM")
 st.write("Sistem pengesan pengunjung masa-nyata berasaskan kecerdasan buatan.")
 
-# 1. Memuatkan model AI YOLOv8 Medium secara selamat
+# 1. Memuatkan model AI YOLOv8 Medium secara selamat di server Streamlit
 @st.cache_resource
 def load_model():
     return YOLO("yolov8m.pt")
@@ -32,14 +32,14 @@ if "jumlah_akhir_pengunjung" not in st.session_state:
 class CrowdVideoProcessor(VideoProcessorBase):
     def __init__(self, data_queue):
         self.senarai_id_pelawat = set()
-        self.data_queue = data_queue  # Guna queue yang di-pass, bukan st.session_state secara langsung
+        self.data_queue = data_queue  # Guna queue yang dihantar, bukan st.session_state secara langsung
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         tinggi, lebar, _ = img.shape
 
-        # Tambah classes=[0] untuk mengehadkan pengesanan kepada MANUSIA sahaja
-        hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False, classes=[0])
+        # Mengehadkan pengesanan kepada kelas MANUSIA sahaja (classes=0)
+        hasil_ai_list = model.track(img, persist=True, tracker="bytetrack.yaml", verbose=False, classes=0)
         dalam_frame_sekarang = 0
 
         if len(hasil_ai_list) > 0:
@@ -55,14 +55,14 @@ class CrowdVideoProcessor(VideoProcessorBase):
                     x1, y1, x2, y2 = kotak
                     self.senarai_id_pelawat.add(id_orang)
 
-                    # Lukis kotak biru pada objek
+                    # Lukis kotak biru pada objek manusia
                     cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
                     label_teks = f"#{id_orang} [{int(conf * 100)}%]"
                     cv2.putText(img, label_teks, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
         jumlah_pelawat_hari_ini = len(self.senarai_id_pelawat)
 
-        # Masukkan data ke dalam queue dengan selamat
+        # Masukkan data ke dalam queue dengan selamat untuk dibaca oleh utas utama
         self.data_queue.put((dalam_frame_sekarang, jumlah_pelawat_hari_ini))
 
         # Dashboard maklumat teks atas skrin kamera
@@ -86,9 +86,10 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Suapan Kamera Langsung")
     
-    # PEMBETULAN: Format sintaks STUN Server yang betul untuk Google & Twilio public
+    # PEMBETULAN UTAMA: Format sintaks URL STUN Server yang sah tanpa simbol '//'
     konfigurasi_rtc = {
         "iceServers": [
+            {"urls": ["stun:://google.com"]},
             {"urls": ["stun:://google.com"]},
             {"urls": ["stun:://google.com"]},
             {"urls": ["stun:stun.stunprotocol.org:3478"]}
@@ -98,7 +99,7 @@ with col1:
     ctx = webrtc_streamer(
         key="crowd-monitor",
         mode=WebRtcMode.SENDRECV,
-        # Hantar data_queue masuk ke dalam parameter factory
+        # Hantar data_queue masuk ke dalam parameter factory menggunakan fungsi lambda
         video_processor_factory=lambda: CrowdVideoProcessor(st.session_state.data_queue),
         async_processing=True,
         rtc_configuration=konfigurasi_rtc,
@@ -113,12 +114,12 @@ with col2:
     st.subheader("Pusat Muat Turun Laporan")
     petak_butang_download = st.empty()
 
-# 4. Pengurusan Logik State & Pengeluaran Data secara Selamat
+# 4. Pengurusan Logik Sesi & Pengeluaran Data Rangkaian secara Selamat
 if ctx.state.playing:
     if st.session_state.waktu_mula_sesi is None:
         st.session_state.waktu_mula_sesi = datetime.now().strftime("%H:%M:%S")
 
-    # Baca data terakhir yang ada di dalam queue tanpa menggunakan loop "while True" yang tiada henti
+    # Baca data terakhir yang ada di dalam queue tanpa melakukan gelung tak terhingga
     dalam_frame, jumlah_pelawat = 0, st.session_state.jumlah_akhir_pengunjung
     while not st.session_state.data_queue.empty():
         dalam_frame, jumlah_pelawat = st.session_state.data_queue.get()
@@ -138,7 +139,7 @@ else:
     if st.session_state.waktu_mula_sesi is None:
         petak_butang_download.info("Sila klik butang 'Start' pada kamera untuk memulakan sesi rekod.")
 
-# Apabila pengguna menekan butang 'Stop'
+# Apabila pengguna menekan butang 'Stop' pada komponen WebRTC
 if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
     waktu_tamat = datetime.now().strftime("%H:%M:%S")
     tarikh_hari_ini = datetime.now().strftime("%Y-%m-%d")
@@ -167,5 +168,5 @@ if not ctx.state.playing and st.session_state.waktu_mula_sesi is not None:
         )
         st.success(f"Sesi tamat pada pukul {waktu_tamat}. Fail laporan sedia untuk dimuat turun!")
     
-    # Reset waktu mula untuk sesi akan datang
+    # Reset waktu mula untuk persediaan sesi rakaman baru
     st.session_state.waktu_mula_sesi = None

@@ -84,13 +84,18 @@ with col1:
     st.subheader("Suapan Kamera Langsung")
     
     # =========================================================================
-    # PENYELESAIAN UTAMA: MENAMBAH SENARAI PELAYAN STUN GLOBAL (KALIS FIREWALLPejabat)
+    # PENYELESAIAN UTAMA: MENAMBAH SENARAI PELAYAN STUN GLOBAL (VERSI SINTAKSIS BETUL)
     # =========================================================================
     konfigurasi_rtc = {
         "iceServers": [
-            {"urls": ["stun:://google.com", "stun:://google.com"]},
-            {"urls": ["stun:://xten.com", "stun:stun.schlund.de"]},
-            {"urls": ["stun:stun.stunprotocol.org:3478"]}
+            {
+                "urls": [
+                    "stun:://google.com",
+                    "stun:://google.com",
+                    "stun:://google.com",
+                    "stun:stun.stunprotocol.org:3478"
+                ]
+            }
         ]
     }
     
